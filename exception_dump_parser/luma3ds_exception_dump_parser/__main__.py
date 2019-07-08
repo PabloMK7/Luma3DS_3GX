@@ -167,7 +167,6 @@ def main(args=None):
     try:
         path = os.path.join(os.environ["DEVKITARM"], "bin", "arm-none-eabi-objdump")
 
-
         if os.name == "nt" and path[0] == '/':
             path = ''.join(('c:', path[0], path[5:]))
 

@@ -1086,7 +1086,7 @@ typedef struct KProcess##sys\
   u32 interruptEnabledFlags[4];\
   KProcessHandleTable handleTable;\
   /* Custom fields for plugin system
-     { */ \
+  /* { */ \
   u32     customFlags; /* see KProcess_CustomFlags enum below */ \
   Handle  onMemoryLayoutChangeEvent;\
   /* } */ \

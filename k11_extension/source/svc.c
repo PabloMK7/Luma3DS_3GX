@@ -61,9 +61,7 @@ void signalSvcEntry(u8 *pageEnd)
 
     // Since DBGEVENT_SYSCALL_ENTRY is non blocking, we'll cheat using EXCEVENT_UNDEFINED_SYSCALL (debug->svcId is fortunately an u16!)
     if(debugOfProcess(currentProcess) != NULL && shouldSignalSyscallDebugEvent(currentProcess, svcId))
-    {
         SignalDebugEvent(DBGEVENT_OUTPUT_STRING, 0xFFFFFFFE, svcId);
-    }
 }
 
 void signalSvcReturn(u8 *pageEnd)

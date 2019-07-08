@@ -41,27 +41,9 @@
 #include "memory.h"
 #include "fmt.h"
 
-void CheckMemory(void)
-{
-        {
-        s64 size = 0, used = 0, free = 0;
-        char buf[0x100] = {0};
-
-        svcGetSystemInfo(&size, 0x10000, 6);
-        svcGetSystemInfo(&used, 0, 1);
-        svcGetSystemInfo(&free, 0x10000, 7);
-        sprintf(buf, "size: %08lX\nused: %08lX\nfree: %08lX\n\n" \
-                     "appmemtype: %ld\nappmemalloc: %08lX",
-            (u32)size, (u32)used, (u32)free,
-            *(vu32 *)PA_FROM_VA_PTR(0x1FF80030), *(vu32 *)PA_FROM_VA_PTR(0x1FF80040));
-
-        DispMessage("Memory", buf);
-    }
-}
-
 Menu rosalinaMenu = {
     "Rosalina menu",
-    .nbItems = 13,
+    .nbItems = 12,
     {
         { "New 3DS menu...", MENU, .menu = &N3DSMenu },
         { "Cheats...", METHOD, .method = &RosalinaMenu_Cheats },
@@ -74,8 +56,7 @@ Menu rosalinaMenu = {
         { "Miscellaneous options...", MENU, .menu = &miscellaneousMenu },
         { "Power off", METHOD, .method = &RosalinaMenu_PowerOff },
         { "Reboot", METHOD, .method = &RosalinaMenu_Reboot },
-        { "Credits", METHOD, .method = &RosalinaMenu_ShowCredits },
-        { "Check emory", METHOD, .method = &CheckMemory }
+        { "Credits", METHOD, .method = &RosalinaMenu_ShowCredits }
     }
 };
 
