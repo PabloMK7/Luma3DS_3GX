@@ -1,6 +1,6 @@
 /*
 *   This file is part of Luma3DS
-*   Copyright (C) 2016-2019 Aurora Wright, TuxSH
+*   Copyright (C) 2016-2018 Aurora Wright, TuxSH
 *
 *   This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -26,15 +26,9 @@
 
 #pragma once
 
-#include <3ds/types.h>
-#include "MyThread.h"
+#include "utils.h"
+#include "kernel.h"
+#include "svc.h"
 
-extern bool inputRedirectionEnabled;
-extern Handle inputRedirectionThreadStartedEvent;
-
-extern int inputRedirectionStartResult;
-
-MyThread *inputRedirectionCreateThread(void);
-void inputRedirectionThreadMain(void);
-Result InputRedirection_DoOrUndoPatches(void);
-
+Result ControlMemoryUnsafe(u32 *out, u32 addr0, u32 size, MemOp op, MemPerm perm);
+Result ControlMemoryUnsafeWrapper(u32 *out, u32 addr0, u32 size, MemOp op, MemPerm perm);

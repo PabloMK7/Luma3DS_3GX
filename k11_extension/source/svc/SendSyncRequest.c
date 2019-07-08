@@ -154,6 +154,31 @@ Result SendSyncRequestHook(Handle handle)
                 break;
             }
 
+            case 0x00D0080: // APT:ReceiveParameter
+            {
+                if (isN3DS)
+                    break;
+
+                SessionInfo *info = SessionInfo_Lookup(clientSession->parentSession);
+
+                if (info != NULL && strncmp(info->name, "APT:", 4) == 0 && cmdbuf[1] == 0x300)
+                {
+                    res = SendSyncRequest(handle);
+                    skip = true;
+
+                    if (res >= 0)
+                    {
+                        u32 plgStatus = PLG_GetStatus();
+                        u32 command = cmdbuf[3];
+
+                        if ((plgStatus == PLG_CFG_RUNNING && command == 3) // COMMAND_RESPONSE
+                        || (plgStatus == PLG_CFG_SWAPPED && (command == 10 || command == 11)))  // COMMAND_WAKEUP_BY_EXIT || COMMAND_WAKEUP_BY_PAUSE
+                            PLG_SignalEvent(PLG_CFG_SWAP_EVENT);
+                    }
+                }
+                break;
+            }
+
             case 0x4010042:
             {
                 SessionInfo *info = SessionInfo_Lookup(clientSession->parentSession);
