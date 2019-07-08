@@ -1,8 +1,10 @@
 #pragma once
 
 #include <3ds/types.h>
+
 #define  MAX_BUFFER (50)
 #define  MAX_ITEMS_COUNT (64)
+
 #define  HeaderMagic (0x24584733) /* "3GX$" */
 
 typedef struct

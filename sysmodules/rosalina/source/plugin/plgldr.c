@@ -1,5 +1,5 @@
 #include <3ds.h>
-#include "plgldr.h"
+#include "plugin/plgldr.h"
 #include <string.h>
 
 static Handle   plgLdrHandle;

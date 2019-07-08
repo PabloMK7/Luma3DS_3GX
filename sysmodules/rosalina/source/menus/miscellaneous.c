@@ -31,12 +31,12 @@
 #include "memory.h"
 #include "draw.h"
 #include "hbloader.h"
-#include "plgloader.h"
 #include "fmt.h"
 #include "utils.h" // for makeARMBranch
 #include "minisoc.h"
 #include "ifile.h"
 #include "pmdbgext.h"
+#include "plugin.h"
 
 Menu miscellaneousMenu = {
     "Miscellaneous options menu",

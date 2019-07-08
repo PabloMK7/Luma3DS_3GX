@@ -25,7 +25,7 @@
 */
 
 #include <3ds.h>
-#include "plgldr.h"
+#include "plugin/plgldr.h"
 
 static bool         g_isSleeping = false;
 static LightEvent   g_onWakeUpEvent;

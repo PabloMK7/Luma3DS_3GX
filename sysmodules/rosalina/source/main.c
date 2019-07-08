@@ -39,7 +39,7 @@
 #include "menus/debugger.h"
 #include "menus/screen_filters.h"
 #include "task_runner.h"
-#include "plgloader.h"
+#include "plugin.h"
 
 static Result stealFsReg(void)
 {
