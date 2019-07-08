@@ -9,6 +9,7 @@
 #include "menus.h"
 #include "memory.h"
 #include "sleep.h"
+#include "task_runner.h"
 
 #define MEMPERM_RW (MEMPERM_READ | MEMPERM_WRITE)
 #define PLGLDR_VERSION (SYSTEM_VERSION(1, 0, 0))
@@ -63,9 +64,6 @@ static Handle       g_kernelEvent = 0;
 static Error        g_error;
 static PluginLoadParametersI   g_userDefinedLoadParameters;
 
-static MyThread     g_pluginLoaderThread;
-static u8 ALIGN(8)  g_pluginLoaderThreadStack[0x4000];
-
 static const char *g_title = "Plugin loader";
 static const char *g_defaultPath = "/luma/plugins/default.3gx";
 static const char *g_swapPath = "/luma/plugins/.swap";
@@ -74,21 +72,6 @@ static const char *g_swapPath = "/luma/plugins/.swap";
 void        gamePatchFunc(void);
 void        IR__Patch(void);
 void        IR__Unpatch(void);
-
-static void PluginLoader__ThreadMain(void);
-MyThread *  PluginLoader__CreateThread(void)
-{
-    s64 out;
-
-    svcGetSystemInfo(&out, 0x10000, 0x102);
-    g_isEnabled = out & 1;
-    g_userDefinedLoadParameters.isEnabled = false;
-    g_plgEventPA = (s32 *)PA_FROM_VA_PTR(&g_plgEvent);
-    g_plgReplyPA = (s32 *)PA_FROM_VA_PTR(&g_plgReply);
-    if(R_FAILED(MyThread_Create(&g_pluginLoaderThread, PluginLoader__ThreadMain, g_pluginLoaderThreadStack, 0x4000, 20, CORE_SYSTEM)))
-        svcBreak(USERBREAK_PANIC);
-    return &g_pluginLoaderThread;
-}
 
 void        PluginLoader__Init(void)
 {
@@ -325,6 +308,8 @@ static u32      GetConfigMemoryEvent(void)
     return (*(vu32 *)PA_FROM_VA_PTR(0x1FF800F0)) & ~0xFFFF;
 }
 
+static FS_DirectoryEntry   entries[10];
+
 static Result   FindPluginFile(u64 tid)
 {
     char                filename[256];
@@ -333,8 +318,8 @@ static Result   FindPluginFile(u64 tid)
     Handle              dir = 0;
     Result              res;
     FS_Archive          sdmcArchive = 0;
-    FS_DirectoryEntry   entries[10];
-
+    
+    memset(entries, 0, sizeof(entries));
     sprintf(g_path, "/luma/plugins/%016llX", tid);
 
     if (R_FAILED((res =FSUSER_OpenArchive(&sdmcArchive, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, "")))))
@@ -871,7 +856,7 @@ static void WaitForProcessTerminated(void *arg)
     // Reset plugin loader state
     SetConfigMemoryStatus(PLG_CFG_NONE);
     pluginIsSwapped = false;
-    g_process = replyTarget = 0;
+    g_process = 0;
     IR__Unpatch();
 }
 
