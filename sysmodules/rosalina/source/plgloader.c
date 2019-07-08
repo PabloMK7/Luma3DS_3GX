@@ -59,6 +59,7 @@ static s32 *        g_plgEventPA;
 static s32 *        g_plgReplyPA;
 static Handle       g_process = 0;
 static Handle       g_arbiter = 0;
+static Handle       g_kernelEvent = 0;
 static Error        g_error;
 static PluginLoadParametersI   g_userDefinedLoadParameters;
 
@@ -87,6 +88,22 @@ MyThread *  PluginLoader__CreateThread(void)
     if(R_FAILED(MyThread_Create(&g_pluginLoaderThread, PluginLoader__ThreadMain, g_pluginLoaderThreadStack, 0x4000, 20, CORE_SYSTEM)))
         svcBreak(USERBREAK_PANIC);
     return &g_pluginLoaderThread;
+}
+
+void        PluginLoader__Init(void)
+{
+    s64 rosalinaFlags = 0;
+
+    svcGetSystemInfo(&rosalinaFlags, 0x10000, 0x102);
+    g_isEnabled = rosalinaFlags & 1;
+    g_userDefinedLoadParameters.isEnabled = false;
+    g_plgEventPA = (s32 *)PA_FROM_VA_PTR(&g_plgEvent);
+    g_plgReplyPA = (s32 *)PA_FROM_VA_PTR(&g_plgReply);
+
+    assertSuccess(svcCreateAddressArbiter(&g_arbiter));
+    assertSuccess(svcCreateEvent(&g_kernelEvent, RESET_ONESHOT));
+
+    svcKernelSetState(0x10007, g_kernelEvent, 0, 0);
 }
 
 bool        PluginLoader__IsEnabled(void)
@@ -550,8 +567,9 @@ exitFail:
     return false;
 }
 
-static void     PluginLoader_HandleCommands(void)
+void     PluginLoader__HandleCommands(void *ctx)
 {
+    (void)ctx;
     u32    *cmdbuf = getThreadCommandBuffer();
 
     switch (cmdbuf[0] >> 16)
@@ -839,137 +857,69 @@ void    PLG__WaitForReply(void)
     svcArbitrateAddress(g_arbiter, (u32)g_plgReplyPA, ARBITRATION_WAIT_IF_LESS_THAN_TIMEOUT, PLG_OK, 5000000000ULL);
 }
 
-static void     PluginLoader__ThreadMain(void)
+// TODO: cleaning
+static bool pluginIsSwapped = false;
+
+static void WaitForProcessTerminated(void *arg)
 {
-    bool    pluginIsSwapped = false;
-    Result  res = 0;
-    Handle  handles[4];
-    Handle  kernelEvent = 0;
-    Handle  serverHandle, clientHandle, sessionHandle = 0;
+    (void)arg;
+    // Unmap plugin's memory before closing the process
+    MemoryBlock__UnmountFromProcess();
+    MemoryBlock__Free();
+    // Terminate process
+    svcCloseHandle(g_process);
+    // Reset plugin loader state
+    SetConfigMemoryStatus(PLG_CFG_NONE);
+    pluginIsSwapped = false;
+    g_process = replyTarget = 0;
+    IR__Unpatch();
+}
 
-    u32 *cmdbuf = getThreadCommandBuffer();
-    u32 replyTarget = 0;
-    u32 nbHandle;
-    s32 index;
+void    PluginLoader__HandleKernelEvent(u32 notifId)
+{
+    (void)notifId;
+    u32 event = GetConfigMemoryEvent();
 
-    assertSuccess(svcCreateAddressArbiter(&g_arbiter));
-    assertSuccess(svcCreateEvent(&kernelEvent, RESET_ONESHOT));
-    assertSuccess(svcCreatePort(&serverHandle, &clientHandle, "plg:ldr", 1));
-
-    svcKernelSetState(0x10007, kernelEvent, 0, 0);
-    do
+    if (event == PLG_CFG_EXIT_EVENT)
     {
-        g_error.message = NULL;
-        g_error.code = 0;
-        handles[0] = kernelEvent;
-        handles[1] = serverHandle;
-        handles[2] = sessionHandle == 0 ? g_process : sessionHandle;
-        handles[3] = g_process;
-
-        if(replyTarget == 0) // k11
-            cmdbuf[0] = 0xFFFF0000;
-
-        nbHandle = 2 + (sessionHandle != 0) + (g_process != 0);
-        res = svcReplyAndReceive(&index, handles, nbHandle, replyTarget);
-
-        if(R_FAILED(res))
+        // Signal the plugin that the game is exiting
+        PLG__NotifyEvent(PLG_ABOUT_TO_EXIT, false);
+        // Wait for plugin reply
+        PLG__WaitForReply();
+        // Start a task to wait for process to be terminated
+        TaskRunner_RunTask(WaitForProcessTerminated, NULL, 0);
+    }
+    else if (event == PLG_CFG_SWAP_EVENT)
+    {
+        EnableNotificationLED();
+        if (pluginIsSwapped)
         {
-            if((u32)res == 0xC920181A) // session closed by remote
-            {
-                svcCloseHandle(sessionHandle);
-                sessionHandle = 0;
-                replyTarget = 0;
-            }
-            else
-                svcBreak(USERBREAK_PANIC);
+            // Reload data from swap file
+            MemoryBlock__IsReady();
+            MemoryBlock__FromSwapFile();
+            MemoryBlock__MountInProcess();
+            // Unlock plugin threads
+            svcControlProcess(g_process, PROCESSOP_SCHEDULE_THREADS, 0, (u32)ThreadPredicate);
+            // Resume plugin execution
+            PLG__NotifyEvent(PLG_OK, true);
+            SetConfigMemoryStatus(PLG_CFG_RUNNING);
         }
         else
         {
-            if (index == 0) // k11 event (swap / process exiting)
-            {
-                u32 event = GetConfigMemoryEvent();
-
-                if (event == PLG_CFG_EXIT_EVENT)
-                {
-                    // Signal the plugin that the game is exiting
-                    PLG__NotifyEvent(PLG_ABOUT_TO_EXIT, false);
-                    // Wait for plugin reply
-                    PLG__WaitForReply();
-                }
-                else if (event == PLG_CFG_SWAP_EVENT)
-                {
-                    EnableNotificationLED();
-                    if (pluginIsSwapped)
-                    {
-                        // Reload data from swap file
-                        MemoryBlock__IsReady();
-                        MemoryBlock__FromSwapFile();
-                        MemoryBlock__MountInProcess();
-                        // Unlock plugin threads
-                        svcControlProcess(g_process, PROCESSOP_SCHEDULE_THREADS, 0, (u32)ThreadPredicate);
-                        // Resume plugin execution
-                        PLG__NotifyEvent(PLG_OK, true);
-                        SetConfigMemoryStatus(PLG_CFG_RUNNING);
-                    }
-                    else
-                    {
-                        // Signal plugin that it's about to be swapped
-                        PLG__NotifyEvent(PLG_ABOUT_TO_SWAP, false);
-                        // Wait for plugin reply
-                        PLG__WaitForReply();
-                        // Lock plugin threads
-                        svcControlProcess(g_process, PROCESSOP_SCHEDULE_THREADS, 1, (u32)ThreadPredicate);
-                        // Put data into file and release memory
-                        MemoryBlock__UnmountFromProcess();
-                        MemoryBlock__ToSwapFile();
-                        MemoryBlock__Free();
-                        SetConfigMemoryStatus(PLG_CFG_SWAPPED);
-                    }
-                    pluginIsSwapped = !pluginIsSwapped;
-                    DisableNotificationLED();
-                }
-                svcSignalEvent(kernelEvent);
-                replyTarget = 0;
-            }
-            else if(index == 1) // Server handle
-            {
-                Handle session;
-                assertSuccess(svcAcceptSession(&session, serverHandle));
-
-                if(sessionHandle == 0)
-                    sessionHandle = session;
-                else
-                    svcCloseHandle(session);
-                replyTarget = 0;
-            }
-            else if (index == 2 && handles[2] == sessionHandle) // Session handle
-            {
-                PluginLoader_HandleCommands();
-                replyTarget = sessionHandle;
-            }
-            else ///< The process in which we injected the plugin is terminating
-            {
-                // Unmap plugin's memory before closing the process
-                MemoryBlock__UnmountFromProcess();
-                MemoryBlock__Free();
-                svcCloseHandle(g_process);
-                SetConfigMemoryStatus(PLG_CFG_NONE);
-                pluginIsSwapped = false;
-                g_process = replyTarget = 0;
-                IR__Unpatch();
-            }
+            // Signal plugin that it's about to be swapped
+            PLG__NotifyEvent(PLG_ABOUT_TO_SWAP, false);
+            // Wait for plugin reply
+            PLG__WaitForReply();
+            // Lock plugin threads
+            svcControlProcess(g_process, PROCESSOP_SCHEDULE_THREADS, 1, (u32)ThreadPredicate);
+            // Put data into file and release memory
+            MemoryBlock__UnmountFromProcess();
+            MemoryBlock__ToSwapFile();
+            MemoryBlock__Free();
+            SetConfigMemoryStatus(PLG_CFG_SWAPPED);
         }
-
-        // If there's'an error, display it
-        if (g_error.message != NULL)
-            DispErrMessage(g_title, g_error.message, g_error.code);
-
-    } while(!terminationRequest);
-
-    if (g_process) svcCloseHandle(g_process);
-    if (g_arbiter) svcCloseHandle(g_arbiter);
-    if (kernelEvent) svcCloseHandle(kernelEvent);
-    svcCloseHandle(sessionHandle);
-    svcCloseHandle(clientHandle);
-    svcCloseHandle(serverHandle);
+        pluginIsSwapped = !pluginIsSwapped;
+        DisableNotificationLED();
+    }
+    srvPublishToSubscriber(0x1002, 0);
 }

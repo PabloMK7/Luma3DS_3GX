@@ -161,6 +161,7 @@ typedef enum
     PLG_CFG_EXIT_EVENT = 2 << 16
 }   PLG_CFG_STATUS;
 
-void     PLG_SignalEvent(u32 event);
-u32      PLG_GetStatus(void);
+void    PLG_SignalEvent(u32 event);
+void    PLG__WakeAppThread(void);
+u32     PLG_GetStatus(void);
 KLinkedList*    KLinkedList__Initialize(KLinkedList *list);

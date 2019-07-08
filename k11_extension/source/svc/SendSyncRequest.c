@@ -154,9 +154,24 @@ Result SendSyncRequestHook(Handle handle)
                 break;
             }
 
+            case 0x00C0080: // srv: publishToSubscriber
+            {
+                SessionInfo *info = SessionInfo_Lookup(clientSession->parentSession);
+
+                if (info != NULL && strcmp(info->name, "srv:") == 0 && cmdbuf[1] == 0x1002)
+                {
+                    // Wake up application thread
+                    PLG__WakeAppThread();
+                    cmdbuf[0] = 0xC0040;
+                    cmdbuf[1] = 0;
+                    skip = true;
+                }
+                break;
+            }
+
             case 0x00D0080: // APT:ReceiveParameter
             {
-                if (isN3DS)
+                if (isN3DS) ///< N3DS do not need the swap system
                     break;
 
                 SessionInfo *info = SessionInfo_Lookup(clientSession->parentSession);

@@ -167,8 +167,9 @@ static void handleNextApplicationDebuggedByForce(u32 notificationId)
 }
 
 static const ServiceManagerServiceEntry services[] = {
-    { "err:f",  1, ERRF_HandleCommands,  true },
-    { "hb:ldr", 2, HBLDR_HandleCommands, true },
+    { "err:f",   1, ERRF_HandleCommands,  true },
+    { "hb:ldr",  2, HBLDR_HandleCommands, true },
+    { "plg:ldr", 1, PluginLoader__HandleCommands, true },
     { NULL },
 };
 
@@ -177,6 +178,7 @@ static const ServiceManagerNotificationEntry notifications[] = {
     { 0x214, Sleep__HandleNotification              },
     { 0x213, Sleep__HandleNotification              },
     { 0x1000, handleNextApplicationDebuggedByForce  },
+    { 0x1001, PluginLoader__HandleKernelEvent       },
     { 0x000, NULL },
 };
 
@@ -185,6 +187,7 @@ int main(void)
     static u8 ipcBuf[0x100] = {0};  // used by both err:f and hb:ldr
     
     Sleep__Init();
+    PluginLoader__Init();
 
     // Set up static buffers for IPC
     u32* bufPtrs = getThreadStaticBuffers();
@@ -199,14 +202,12 @@ int main(void)
 
     MyThread *menuThread = menuCreateThread();
     MyThread *taskRunnerThread = taskRunnerCreateThread();
-    MyThread *plgloaderThread = PluginLoader__CreateThread();
 
     if (R_FAILED(ServiceManager_Run(services, notifications, NULL)))
         svcBreak(USERBREAK_PANIC);
 
     MyThread_Join(menuThread, -1LL);
     MyThread_Join(taskRunnerThread, -1LL);
-    MyThread_Join(plgloaderThread, -1LL);
 
     return 0;
 }

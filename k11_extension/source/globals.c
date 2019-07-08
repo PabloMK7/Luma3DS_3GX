@@ -26,6 +26,7 @@
 
 #include "globals.h"
 #include "utils.h"
+#include "ipc.h"
 
 KRecursiveLock *criticalSectionLock;
 KObjectList *threadList;
@@ -140,10 +141,37 @@ void     PLG_SignalEvent(u32 event)
 {
     KThread     *currentThread = currentCoreContext->objectContext.currentThread;
 
-
+    // Set configuration memory field with event
     *(vu32 *)PA_FROM_VA_PTR((u32 *)0x1FF800F0) |= event;
-    KEvent__Signal(signalPluginEvent);
+
+    // Send notification 0x1001
+    {
+        u32     *cmdbuf = (u32 *)((u8 *)currentCoreContext->objectContext.currentThread->threadLocalStorage + 0x80);
+        u32     backup[3] = { cmdbuf[0], cmdbuf[1], cmdbuf[2] };
+        Handle  srvHandle;
+        SessionInfo *info = SessionInfo_FindFirst("srv:");
+
+        Result  res = createHandleForThisProcess(&srvHandle, &info->session->clientSession.syncObject.autoObject);
+
+        if (res >= 0)
+        {
+            cmdbuf[0] = 0x000C0080;
+            cmdbuf[1] = 0x1001;
+            cmdbuf[2] = 0;
+
+            SendSyncRequest(srvHandle);
+            CloseHandle(srvHandle);
+        }
+
+        cmdbuf[0] = backup[0]; cmdbuf[1] = backup[1]; cmdbuf[2] = backup[2];
+    }
+    // Wait for notification 0x1002
     WaitSynchronization1(NULL, currentThread, (KSynchronizationObject *)signalPluginEvent, U64_MAX);
+}
+
+void    PLG__WakeAppThread(void)
+{
+    KEvent__Signal(signalPluginEvent);
 }
 
 u32      PLG_GetStatus(void)
