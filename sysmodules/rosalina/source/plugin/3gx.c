@@ -1,17 +1,29 @@
 #include <3ds.h>
 #include "3gx.h"
 
+static inline u32 invertEndianness(u32 val)
+{
+	return ((val & 0xFF) << 24) | ((val & 0xFF00) << 8) | ((val & 0xFF0000) >> 8) | ((val & 0xFF000000) >> 24);
+}
+
 Result  Check_3gx_Magic(IFile *file)
 {
     u64     magic;
     u64     total;
     Result  res;
+    int     verDif;
 
     file->pos = 0;
     if (R_FAILED((res = IFile_Read(file, &total, &magic, sizeof(u64)))))
         return res;
 
-    return magic != _3GX_MAGIC ? -1 : 0;
+    if ((u32)magic != (u32)_3GX_MAGIC) //Invalid file type
+    	return MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, 1);
+
+    else if ((verDif = invertEndianness((u32)(magic >> 32)) - invertEndianness((u32)(_3GX_MAGIC >> 32))) != 0) //Invalid plugin version (2 -> outdated plugin; 3 -> outdated loader)
+		return MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, (verDif < 0) ? 2 : 3);
+
+    else return 0;
 }
 
 Result  Read_3gx_Header(IFile *file, _3gx_Header *header)
