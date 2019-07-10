@@ -194,12 +194,15 @@ bool     TryToLoadPlugin(Handle process)
     // Check 3GX file signature
     if (!res && R_FAILED(res = Check_3gx_Magic(&plugin)))
     {
-        if (R_MODULE(res) == RM_LDR)
+        const char * errors[] = 
         {
-            if (R_DESCRIPTION(res) == 1) ctx->error.message = "Invalid plugin file\nNot a valid 3GX plugin format!";
-            if (R_DESCRIPTION(res) == 2) ctx->error.message = "Outdated plugin file\nCheck for an updated plugin";
-            else if (R_DESCRIPTION(res) == 3) ctx->error.message = "Outdated plugin loader\nCheck for Luma3DS updates";
-        } else ctx->error.message = "Couldn't read file";
+            "Couldn't read file",
+            "Invalid plugin file\nNot a valid 3GX plugin format!",
+            "Outdated plugin file\nCheck for an updated plugin",
+            "Outdated plugin loader\nCheck for Luma3DS updates"   
+        };
+
+        ctx->error.message = errors[R_MODULE(res) == RM_LDR ? R_DESCRIPTION(res) : 0];
     }
     // Plugins will not exceed 5MB so this is fine
     header = (_3gx_Header *)(ctx->memblock.memblock + MemBlockSize - (u32)fileSize);
