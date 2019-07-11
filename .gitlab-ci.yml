@@ -1,0 +1,26 @@
+stages:
+    - build
+    - release
+
+build-master:
+  image: nanquitas/luma3ds:latest
+  stage: build
+  services:
+  only:
+    - master
+    - merge_requests
+  before_script:
+  script:
+    - make
+  artifacts:
+    paths:
+      - boot.firm
+    expire_in: 1 week
+
+release:
+    image: inetprocess/gitlab-release
+    stage: release
+    only:
+        - master
+    script:
+        - gitlab-release --message "luma3ds hourly $CI_COMMIT_SHORT_SHA" boot.firm
