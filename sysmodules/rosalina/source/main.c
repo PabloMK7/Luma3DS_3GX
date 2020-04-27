@@ -1,6 +1,6 @@
 /*
 *   This file is part of Luma3DS
-*   Copyright (C) 2016-2019 Aurora Wright, TuxSH
+*   Copyright (C) 2016-2020 Aurora Wright, TuxSH
 *
 *   This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -38,8 +38,11 @@
 #include "menus/miscellaneous.h"
 #include "menus/debugger.h"
 #include "menus/screen_filters.h"
+#include "menus/cheats.h"
 #include "task_runner.h"
 #include "plugin.h"
+
+bool isN3DS;
 
 static Result stealFsReg(void)
 {
@@ -74,52 +77,39 @@ static Result fsRegSetupPermissions(void)
     return res;
 }
 
-// this is called before main
-bool isN3DS;
-void __appInit()
-{
-    Result res;
-    for(res = 0xD88007FA; res == (Result)0xD88007FA; svcSleepThread(500 * 1000LL))
-    {
-        res = srvInit();
-        if(R_FAILED(res) && res != (Result)0xD88007FA)
-            svcBreak(USERBREAK_PANIC);
-    }
-
-    if (R_FAILED(stealFsReg()) || R_FAILED(fsRegSetupPermissions()) || R_FAILED(fsInit()))
-        svcBreak(USERBREAK_PANIC);
-
-    if (R_FAILED(pmDbgInit()))
-        svcBreak(USERBREAK_PANIC);
-}
-
-// this is called after main exits
-void __appExit()
-{
-    pmDbgExit();
-    acExit();
-    fsExit();
-    svcCloseHandle(*fsRegGetSessionHandle());
-    srvExit();
-}
-
-
 Result __sync_init(void);
 Result __sync_fini(void);
 void __libc_init_array(void);
 void __libc_fini_array(void);
 
-void __ctru_exit()
+void __ctru_exit(int rc) { (void)rc; } // needed to avoid linking error
+
+// this is called after main exits
+void __wrap_exit(int rc)
 {
+    (void)rc;
+    // TODO: make pm terminate rosalina
     __libc_fini_array();
-    __appExit();
-    __sync_fini();
+
+    // Kernel will take care of it all
+    /*
+    pmDbgExit();
+    acExit();
+    fsExit();
+    svcCloseHandle(*fsRegGetSessionHandle());
+    srvExit();
+    __sync_fini();*/
+
     svcExitProcess();
 }
 
-void initSystem()
+// this is called before main
+void initSystem(void)
 {
     s64 out;
+    Result res;
+    __sync_init();
+
     isN3DS = svcGetSystemInfo(&out, 0x10001, 0) == 0;
 
     svcGetSystemInfo(&out, 0x10000, 0x100);
@@ -132,8 +122,23 @@ void initSystem()
                                                                                   "Switch the hb. title to hblauncher_loader";
 
     ProcessPatchesMenu_PatchUnpatchFSDirectly();
-    __sync_init();
-    __appInit();
+
+    for(res = 0xD88007FA; res == (Result)0xD88007FA; svcSleepThread(500 * 1000LL))
+    {
+        res = srvInit();
+        if(R_FAILED(res) && res != (Result)0xD88007FA)
+            svcBreak(USERBREAK_PANIC);
+    }
+
+    if (R_FAILED(stealFsReg()) || R_FAILED(fsRegSetupPermissions()) || R_FAILED(fsInit()))
+        svcBreak(USERBREAK_PANIC);
+
+    if (R_FAILED(pmDbgInit()))
+        svcBreak(USERBREAK_PANIC);
+
+    // **** DO NOT init services that don't come from KIPs here ****
+    // Instead, init the service only where it's actually init (then deinit it).
+
     __libc_init_array();
 
     // ROSALINA HACKJOB BEGIN
@@ -160,14 +165,12 @@ static void handleTermNotification(u32 notificationId)
 
 static void handleNextApplicationDebuggedByForce(u32 notificationId)
 {
-    int dummy;
     (void)notificationId;
     // Following call needs to be async because pm -> Loader depends on rosalina hb:ldr, handled in this very thread.
-    TaskRunner_RunTask(debuggerFetchAndSetNextApplicationDebugHandleTask, &dummy, 0);
+    TaskRunner_RunTask(debuggerFetchAndSetNextApplicationDebugHandleTask, NULL, 0);
 }
 
 static const ServiceManagerServiceEntry services[] = {
-    { "err:f",   1, ERRF_HandleCommands,  true },
     { "hb:ldr",  2, HBLDR_HandleCommands, true },
     { "plg:ldr", 1, PluginLoader__HandleCommands, true },
     { NULL },
@@ -200,14 +203,20 @@ int main(void)
     if(R_FAILED(svcCreateEvent(&terminationRequestEvent, RESET_STICKY)))
         svcBreak(USERBREAK_ASSERT);
 
+    Cheat_SeedRng(svcGetSystemTick());
+
     MyThread *menuThread = menuCreateThread();
     MyThread *taskRunnerThread = taskRunnerCreateThread();
+    MyThread *errDispThread = errDispCreateThread();
 
     if (R_FAILED(ServiceManager_Run(services, notifications, NULL)))
         svcBreak(USERBREAK_PANIC);
 
+    TaskRunner_Terminate();
+
     MyThread_Join(menuThread, -1LL);
     MyThread_Join(taskRunnerThread, -1LL);
+    MyThread_Join(errDispThread, -1LL);
 
     return 0;
 }

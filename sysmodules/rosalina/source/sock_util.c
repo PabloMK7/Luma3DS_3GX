@@ -1,6 +1,6 @@
 /*
 *   This file is part of Luma3DS.
-*   Copyright (C) 2016-2019 Aurora Wright, TuxSH
+*   Copyright (C) 2016-2020 Aurora Wright, TuxSH
 *
 *   SPDX-License-Identifier: (MIT OR GPL-2.0-or-later)
 */
@@ -122,7 +122,7 @@ void server_bind(struct sock_server *serv, u16 port)
     struct sockaddr_in saddr;
     saddr.sin_family = AF_INET;
     saddr.sin_port = htons(port);
-    saddr.sin_addr.s_addr = gethostid();
+    saddr.sin_addr.s_addr = socGethostid();
 
     res = socBind(server_sockfd, (struct sockaddr*)&saddr, sizeof(struct sockaddr_in));
 

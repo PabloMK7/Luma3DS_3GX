@@ -1,6 +1,6 @@
 /*
 *   This file is part of Luma3DS
-*   Copyright (C) 2016-2019 Aurora Wright, TuxSH
+*   Copyright (C) 2016-2020 Aurora Wright, TuxSH
 *
 *   This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -104,7 +104,7 @@ static void ProcessListMenu_DumpMemory(const char *name, void *start, u32 size)
     IFile file;
     Result res;
 
-    char filename[64] = {0};
+    char filename[100] = {0};
 
     FS_Archive archive;
     FS_ArchiveID archiveId;
@@ -666,7 +666,7 @@ void RosalinaMenu_ProcessList(void)
         if(gdbServer.super.running)
         {
             char ipBuffer[17];
-            u32 ip = gethostid();
+            u32 ip = socGethostid();
             u8 *addr = (u8 *)&ip;
             int n = sprintf(ipBuffer, "%hhu.%hhu.%hhu.%hhu", addr[0], addr[1], addr[2], addr[3]);
             Draw_DrawString(SCREEN_BOT_WIDTH - 10 - SPACING_X * n, 10, COLOR_WHITE, ipBuffer);

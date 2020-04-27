@@ -1,6 +1,6 @@
 /*
 *   This file is part of Luma3DS
-*   Copyright (C) 2016-2019 Aurora Wright, TuxSH
+*   Copyright (C) 2016-2020 Aurora Wright, TuxSH
 *
 *   This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@
 
 #include <3ds.h>
 #include <arpa/inet.h>
-#include "utils.h" // for makeARMBranch
+#include "utils.h" // for makeArmBranch
 #include "minisoc.h"
 #include "input_redirection.h"
 #include "menus.h"
@@ -71,7 +71,7 @@ void inputRedirectionThreadMain(void)
     struct sockaddr_in saddr;
     saddr.sin_family = AF_INET;
     saddr.sin_port = htons(4950);
-    saddr.sin_addr.s_addr = gethostid();
+    saddr.sin_addr.s_addr = socGethostid();
     res = socBind(sock, (struct sockaddr*)&saddr, sizeof(struct sockaddr_in));
     if(res != 0)
     {
@@ -108,7 +108,7 @@ void inputRedirectionThreadMain(void)
         int pollres = socPoll(&pfd, 1, 10);
         if(pollres > 0 && (pfd.revents & POLLIN))
         {
-            int n = soc_recvfrom(sock, buf, 20, 0, NULL, 0);
+            int n = socRecvfrom(sock, buf, 20, 0, NULL, 0);
             if(n < 0)
                 break;
             else if(n < 12)
@@ -293,7 +293,7 @@ static void IR__DoUndoPatchs(Handle processHandle, bool doPatch)
         origIrSync = *off2;
         origCppFlag = *off3;
 
-        *(void **)(irCodePhys + 8) = decodeARMBranch(off + 4);
+        *(void **)(irCodePhys + 8) = decodeArmBranch(off + 4);
         *(void **)(irCodePhys + 12) = (void*)irDataPhys;
 
         irHook[4] = irCodePhys;

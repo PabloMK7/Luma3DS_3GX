@@ -1,6 +1,6 @@
 /*
 *   This file is part of Luma3DS
-*   Copyright (C) 2016-2019 Aurora Wright, TuxSH
+*   Copyright (C) 2016-2020 Aurora Wright, TuxSH
 *
 *   This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -30,12 +30,14 @@
 #include "utils.h"
 #include "minisoc.h"
 
-#define NUM2BCD(n)  ((n<99) ? (((n/10)*0x10)|(n%10)) : 0x99)
+#define NUM2BCD(n)          ((n<99) ? (((n/10)*0x10)|(n%10)) : 0x99)
 
 #define NTP_TIMESTAMP_DELTA 2208988800ull
 
+#define MAKE_IPV4(a,b,c,d)  ((a) << 24 | (b) << 16 | (c) << 8 | (d))
+
 #ifndef NTP_IP
-#define NTP_IP 0xD8EF2300
+#define NTP_IP              MAKE_IPV4(51, 137, 137, 111) // time.windows.com
 #endif
 
 typedef struct RtcTime {
@@ -113,7 +115,7 @@ Result ntpGetTimeStamp(time_t *outTimestamp)
 
     // Copy the server's IP address to the server address structure.
 
-    servAddr.sin_addr.s_addr = htonl(NTP_IP); // 216.239.35.0 time1.google.com
+    servAddr.sin_addr.s_addr = htonl(NTP_IP);
     // Convert the port number integer to network big-endian style and save it to the server address structure.
 
     servAddr.sin_port = htons(123);
@@ -123,10 +125,10 @@ Result ntpGetTimeStamp(time_t *outTimestamp)
     if(socConnect(sock, (struct sockaddr *)&servAddr, sizeof(struct sockaddr_in)) < 0)
         goto cleanup;
 
-    if(soc_send(sock, &packet, sizeof(NtpPacket), 0) < 0)
+    if(socSend(sock, &packet, sizeof(NtpPacket), 0) < 0)
         goto cleanup;
 
-    if(soc_recv(sock, &packet, sizeof(NtpPacket), 0) < 0)
+    if(socRecv(sock, &packet, sizeof(NtpPacket), 0) < 0)
         goto cleanup;
 
     res = 0;

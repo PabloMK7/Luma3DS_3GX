@@ -1,6 +1,6 @@
 /*
 *   This file is part of Luma3DS
-*   Copyright (C) 2016-2019 Aurora Wright, TuxSH
+*   Copyright (C) 2016-2020 Aurora Wright, TuxSH
 *
 *   This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -47,12 +47,7 @@ Result SendSyncRequestHook(Handle handle)
             case 0x10042:
             {
                 SessionInfo *info = SessionInfo_Lookup(clientSession->parentSession);
-                if(info != NULL && kernelVersion >= SYSTEM_VERSION(2, 39, 4) && strcmp(info->name, "srv:pm") == 0)
-                {
-                    res = doPublishToProcessHook(handle, cmdbuf);
-                    skip = true;
-                }
-                else if(info != NULL && strcmp(info->name, "ndm:u") == 0 && hasStartedRosalinaNetworkFuncsOnce)
+                if(info != NULL && strcmp(info->name, "ndm:u") == 0 && hasStartedRosalinaNetworkFuncsOnce)
                 {
                     cmdbuf[0] = 0x10040;
                     cmdbuf[1] = 0;
@@ -191,18 +186,6 @@ Result SendSyncRequestHook(Handle handle)
                             PLG_SignalEvent(PLG_CFG_SWAP_EVENT);
                     }
                 }
-                break;
-            }
-
-            case 0x4010042:
-            {
-                SessionInfo *info = SessionInfo_Lookup(clientSession->parentSession);
-                if(info != NULL && kernelVersion < SYSTEM_VERSION(2, 39, 4) && strcmp(info->name, "srv:pm") == 0)
-                {
-                    res = doPublishToProcessHook(handle, cmdbuf);
-                    skip = true;
-                }
-
                 break;
             }
 

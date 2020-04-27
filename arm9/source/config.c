@@ -1,6 +1,6 @@
 /*
 *   This file is part of Luma3DS
-*   Copyright (C) 2016-2019 Aurora Wright, TuxSH
+*   Copyright (C) 2016-2020 Aurora Wright, TuxSH
 *
 *   This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -94,7 +94,7 @@ void configMenu(bool oldPinStatus, u32 oldPinMode)
                                                "( ) Show NAND or user string in System Settings",
                                                "( ) Show GBA boot screen in patched AGB_FIRM",
                                                "( ) Set developer UNITINFO",
-                                               "( ) Disable ARM11 exception handlers",
+                                               "( ) Disable Arm11 exception handlers",
                                              };
 
     static const char *optionsDescription[]  = { "Select the default EmuNAND.\n\n"
@@ -189,7 +189,7 @@ void configMenu(bool oldPinStatus, u32 oldPinMode)
                                                  "are doing!",
 
                                                  "Disables the fatal error exception\n"
-                                                 "handlers for the ARM11 CPU.\n\n"
+                                                 "handlers for the Arm11 CPU.\n\n"
                                                  "Note: Disabling the exception handlers\n"
                                                  "will disqualify you from submitting\n"
                                                  "issues or bug reports to the Luma3DS\n"

@@ -1,6 +1,6 @@
 /*
 *   This file is part of Luma3DS
-*   Copyright (C) 2016-2019 Aurora Wright, TuxSH
+*   Copyright (C) 2016-2020 Aurora Wright, TuxSH
 *
 *   This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -126,14 +126,13 @@ u32 waitCombo(void)
 }
 
 static MyThread menuThread;
-static u8 ALIGN(8) menuThreadStack[0x3000];
+static u8 ALIGN(8) menuThreadStack[0x1000];
 static u8 batteryLevel = 255;
 static u32 homeBtnPressed = 0;
 
 MyThread *menuCreateThread(void)
 {
-   // svcKernelSetState(0x10007, &homeBtnPressed);
-    if(R_FAILED(MyThread_Create(&menuThread, menuThreadMain, menuThreadStack, THREAD_STACK_SIZE, 52, CORE_SYSTEM)))
+    if(R_FAILED(MyThread_Create(&menuThread, menuThreadMain, menuThreadStack, 0x1000, 52, CORE_SYSTEM)))
         svcBreak(USERBREAK_PANIC);
     return &menuThread;
 }
@@ -264,7 +263,7 @@ static void menuDraw(Menu *menu, u32 selected)
     if(miniSocEnabled)
     {
         char ipBuffer[17];
-        u32 ip = gethostid();
+        u32 ip = socGethostid();
         u8 *addr = (u8 *)&ip;
         int n = sprintf(ipBuffer, "%hhu.%hhu.%hhu.%hhu", addr[0], addr[1], addr[2], addr[3]);
         Draw_DrawString(SCREEN_BOT_WIDTH - 10 - SPACING_X * n, 10, COLOR_WHITE, ipBuffer);
