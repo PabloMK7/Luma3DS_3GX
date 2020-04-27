@@ -13,12 +13,6 @@ static inline u32 invertEndianness(u32 val)
     return ((val & 0xFF) << 24) | ((val & 0xFF00) << 8) | ((val & 0xFF0000) >> 8) | ((val & 0xFF000000) >> 24);
 }
 
-
-static inline u32 invertEndianness(u32 val)
-{
-	return ((val & 0xFF) << 24) | ((val & 0xFF00) << 8) | ((val & 0xFF0000) >> 8) | ((val & 0xFF000000) >> 24);
-}
-
 Result  Check_3gx_Magic(IFile *file)
 {
     u64     magic;
