@@ -416,7 +416,6 @@ Result InputRedirection_DoOrUndoPatches(void)
 
     Result res = OpenProcessByName("hid", &processHandle);
     static bool hidPatched = false;
-    static bool irPatched = false;
 
     if(R_SUCCEEDED(res))
     {
