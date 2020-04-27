@@ -187,7 +187,7 @@ Result SendSyncRequestHook(Handle handle)
                         u32 command = cmdbuf[3];
 
                         if ((plgStatus == PLG_CFG_RUNNING && command == 3) // COMMAND_RESPONSE
-                        || (plgStatus == PLG_CFG_SWAPPED && (command == 10 || command == 11)))  // COMMAND_WAKEUP_BY_EXIT || COMMAND_WAKEUP_BY_PAUSE
+                        || (plgStatus == PLG_CFG_SWAPPED && (command >= 10 || command <= 12)))  // COMMAND_WAKEUP_BY_EXIT || COMMAND_WAKEUP_BY_PAUSE
                             PLG_SignalEvent(PLG_CFG_SWAP_EVENT);
                     }
                 }
