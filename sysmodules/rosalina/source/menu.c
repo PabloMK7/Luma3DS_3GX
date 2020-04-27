@@ -140,6 +140,7 @@ MyThread *menuCreateThread(void)
 
 extern bool isN3DS;
 u32 menuCombo;
+u32 blockMenuOpen = 0;
 
 u32     DispWarningOnHome(void);
 
@@ -155,10 +156,12 @@ void    menuThreadMain(void)
         N3DSMenu_UpdateStatus();
 
     bool isAcURegistered = false;
+	
+	u32* blockMenuOpenPys = (u32*)(svcConvertVAToPA(&blockMenuOpen, false) | (1 << 31));
 
     while(!terminationRequest)
     {
-        if((HID_PAD & menuCombo) == menuCombo)
+        if((HID_PAD & menuCombo) == menuCombo && !*blockMenuOpenPys)
         {
             if (!isAcURegistered)
                 isAcURegistered = R_SUCCEEDED(srvIsServiceRegistered(&isAcURegistered, "ac:u"))

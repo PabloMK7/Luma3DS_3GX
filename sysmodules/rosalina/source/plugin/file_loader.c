@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdio.h>
 #include "csvc.h"
-#include "3gx.h"
 #include "plugin.h"
 #include "ifile.h"
 #include "ifile.h"
@@ -191,15 +190,14 @@ bool     TryToLoadPlugin(Handle process)
     if (R_FAILED((res = IFile_GetSize(&plugin, &fileSize))))
         ctx->error.message = "Couldn't get file size";
 
-    // Check 3GX file signature
     if (!res && R_FAILED(res = Check_3gx_Magic(&plugin)))
     {
         const char * errors[] = 
         {
-            "Couldn't read file",
+            "Couldn't read file.",
             "Invalid plugin file\nNot a valid 3GX plugin format!",
-            "Outdated plugin file\nCheck for an updated plugin",
-            "Outdated plugin loader\nCheck for Luma3DS updates"   
+            "Outdated plugin file\nCheck for an updated plugin.",
+            "Outdated plugin loader\nCheck for Luma3DS updates."   
         };
 
         ctx->error.message = errors[R_MODULE(res) == RM_LDR ? R_DESCRIPTION(res) : 0];

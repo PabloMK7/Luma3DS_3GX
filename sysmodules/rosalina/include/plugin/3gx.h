@@ -54,3 +54,4 @@ typedef struct PACKED
 Result  Check_3gx_Magic(IFile *file);
 Result  Read_3gx_Header(IFile *file, _3gx_Header *header);
 Result  Read_3gx_LoadSegments(IFile *file, _3gx_Header *header, void *dst);
+void	Reset_3gx_DecParams(void);

@@ -7,7 +7,8 @@
 
 #define MEMPERM_RW (MEMPERM_READ | MEMPERM_WRITE)
 
-static const char *g_swapPath = "/luma/plugins/.swap";
+u32  g_encDecSwapArgs[0x10];
+char g_swapFileName[256];
 
 Result      MemoryBlock__IsReady(void)
 {
@@ -115,10 +116,12 @@ Result      MemoryBlock__ToSwapFile(void)
 
     svcFlushDataCacheRange(memblock->memblock, MemBlockSize);
     res = IFile_Open(&file, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""),
-                    fsMakePath(PATH_ASCII, g_swapPath), FS_OPEN_RWC);
+                    fsMakePath(PATH_ASCII, g_swapFileName), FS_OPEN_RWC);
 
     if (R_FAILED(res)) return res;
-
+    
+    encSwapFunc(memblock->memblock, memblock->memblock + MemBlockSize, g_encDecSwapArgs);
+    
     res = IFile_Write(&file, &written, memblock->memblock, toWrite, FS_WRITE_FLUSH);
 
     if (R_FAILED(res) || written != toWrite)
@@ -138,7 +141,7 @@ Result      MemoryBlock__FromSwapFile(void)
     Result  res = 0;
 
     res = IFile_Open(&file, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""),
-                    fsMakePath(PATH_ASCII, g_swapPath), FS_OPEN_READ);
+                    fsMakePath(PATH_ASCII, g_swapFileName), FS_OPEN_READ);
 
     if (R_FAILED(res))
         svcBreak(USERBREAK_ASSERT); ///< TODO: Better error handling
@@ -147,6 +150,8 @@ Result      MemoryBlock__FromSwapFile(void)
 
     if (R_FAILED(res) || read != toRead)
         svcBreak(USERBREAK_ASSERT); ///< TODO: Better error handling
+    
+    decSwapFunc(memblock->memblock, memblock->memblock + MemBlockSize, g_encDecSwapArgs);
 
     svcFlushDataCacheRange(memblock->memblock, MemBlockSize);
     IFile_Close(&file);
@@ -191,4 +196,22 @@ Result     MemoryBlock__UnmountFromProcess(void)
     res |= svcUnmapProcessMemoryEx(target, header->heapVA, header->heapSize);
 
     return res;
+}
+
+void       MemoryBlock__ResetSwapSettings(void)
+{
+	u32* encPhysAddr = PA_FROM_VA_PTR((u32)encSwapFunc); //Bypass mem permissions
+	u32* decPhysAddr = PA_FROM_VA_PTR((u32)decSwapFunc);
+
+	memset(g_encDecSwapArgs, 0, sizeof(g_encDecSwapArgs));
+
+	encPhysAddr[0] = decPhysAddr[0] = 0xE12FFF1E; // BX LR
+
+	for (int i = 1; i < 32; i++) {
+		encPhysAddr[i] = decPhysAddr[i] = 0xE320F000; // NOP
+	}
+
+	strcpy(g_swapFileName, "/luma/plugins/.swap");
+
+	svcInvalidateEntireInstructionCache();
 }

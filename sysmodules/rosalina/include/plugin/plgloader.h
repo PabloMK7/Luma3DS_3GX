@@ -21,6 +21,14 @@ Result     MemoryBlock__ToSwapFile(void);
 Result     MemoryBlock__FromSwapFile(void);
 Result     MemoryBlock__MountInProcess(void);
 Result     MemoryBlock__UnmountFromProcess(void);
+void       MemoryBlock__ResetSwapSettings(void);
+
+extern u32  g_encDecSwapArgs[0x10];
+extern u32  g_decExeArgs[0x10];
+extern char g_swapFileName[256];
+void        encSwapFunc(void* startAddr, void* endAddr, void* args);
+void        decSwapFunc(void* startAddr, void* endAddr, void* args);
+void		decExeFunc(void* startAddr, void* endAddr, void* args);
 
 bool     TryToLoadPlugin(Handle process);
 void    PLG__NotifyEvent(PLG_Event event, bool signal);

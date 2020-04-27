@@ -18,8 +18,11 @@ gamePatchFunc:
     svc     0x94
 
 startplugin:
+    adr		r0, g_savedGameInstr
+	push    {r0}
     ldr     r5, =0x07000100
     blx     r5
+    add		sp, sp, #4
 
 exit:
     ldmfd   sp!, {r0}

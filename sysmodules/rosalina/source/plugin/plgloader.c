@@ -1,9 +1,7 @@
 #include <3ds.h>
-#include "3gx.h"
 #include "ifile.h"
 #include "utils.h" // for makeARMBranch
-#include "plugin/plgloader.h"
-#include "plugin/plgldr.h"
+#include "plugin.h"
 #include "fmt.h"
 #include "menu.h"
 #include "menus.h"
@@ -14,14 +12,10 @@
 #define PLGLDR_VERSION (SYSTEM_VERSION(1, 0, 0))
 
 #define THREADVARS_MAGIC  0x21545624 // !TV$
-#define HeaderMagic (0x24584733) /* "3GX$" */
-
-
-
 
 static const char *g_title = "Plugin loader";
 PluginLoaderContext PluginLoaderCtx;
-
+extern u32 blockMenuOpen;
 
 void        IR__Patch(void);
 void        IR__Unpatch(void);
@@ -39,6 +33,8 @@ void        PluginLoader__Init(void)
 
     ctx->plgEventPA = (s32 *)PA_FROM_VA_PTR(&ctx->plgEvent);
     ctx->plgReplyPA = (s32 *)PA_FROM_VA_PTR(&ctx->plgReply);
+
+    MemoryBlock__ResetSwapSettings();
 
     assertSuccess(svcCreateAddressArbiter(&ctx->arbiter));
     assertSuccess(svcCreateEvent(&ctx->kernelEvent, RESET_ONESHOT));
@@ -297,7 +293,95 @@ void     PluginLoader__HandleCommands(void *_ctx)
 
             break;
         }
+        
+		case 11: // Get menu opening block pys address
+		{
+			if (cmdbuf[0] != IPC_MakeHeader(11, 0, 0))
+            {
+                error(cmdbuf, 0xD9001830);
+                break;
+            }
+			cmdbuf[0] = IPC_MakeHeader(11, 2, 0);
+			cmdbuf[1] = 0;
+            cmdbuf[2] = svcConvertVAToPA(&blockMenuOpen, false);
+			break;
+		}
+        
+		case 12: // Set swap settings
+		{
+			if (cmdbuf[0] != IPC_MakeHeader(12, 2, 4))
+			{
+				error(cmdbuf, 0xD9001830);
+				break;
+			}
+			cmdbuf[0] = IPC_MakeHeader(12, 1, 0);
+			MemoryBlock__ResetSwapSettings();
+			if (cmdbuf[1]) {
+				u32* encPhysAddr = PA_FROM_VA_PTR(encSwapFunc); //Bypass mem permissions
+				u32* remoteEncPhysAddr = (u32*)(cmdbuf[1] | (1 << 31));
+				int i = 0;
+				for (; i < 32 && remoteEncPhysAddr[i] != 0xE320F000; i++) {
+					encPhysAddr[i] = remoteEncPhysAddr[i];
+				}
+				if (i >= 32) {
+					cmdbuf[1] = MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_INVALID_SIZE);
+					MemoryBlock__ResetSwapSettings();
+					break;
+				}
+			}
+			if (cmdbuf[2]) {
+				u32* decPhysAddr = PA_FROM_VA_PTR(decSwapFunc); //Bypass mem permissions
+				u32* remoteDecPhysAddr = (u32*)(cmdbuf[2] | (1 << 31));
+				int j = 0;
+				for (; j < 32 && remoteDecPhysAddr[j] != 0xE320F000; j++) {
+					decPhysAddr[j] = remoteDecPhysAddr[j];
+				}
+				if (j >= 32) {
+					cmdbuf[1] = MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_INVALID_SIZE);
+					MemoryBlock__ResetSwapSettings();
+					break;
+				}
+			}
+			
+			memcpy(g_encDecSwapArgs, (u32*)cmdbuf[4], 16 * sizeof(u32));
+			if (((char*)cmdbuf[6])[0] != '\0') strncpy(g_swapFileName, (char*)cmdbuf[6], 255);
+			
+			svcInvalidateEntireInstructionCache(); // Could use the range one
 
+			cmdbuf[1] = 0;
+			break;
+		}
+        
+		case 13: // Set plugin exe dec 
+		{
+			if (cmdbuf[0] != IPC_MakeHeader(13, 1, 2))
+			{
+				error(cmdbuf, 0xD9001830);
+				break;
+			}
+			cmdbuf[0] = IPC_MakeHeader(13, 1, 0);
+			Reset_3gx_DecParams();
+			if (cmdbuf[1]) {
+				u32* decExeFuncAddr = PA_FROM_VA_PTR(decExeFunc); //Bypass mem permissions
+				u32* remoteDecExeFuncAddr = (u32*)(cmdbuf[1] | (1 << 31));
+				int i = 0;
+				for (; i < 32 && remoteDecExeFuncAddr[i] != 0xE320F000; i++) {
+					decExeFuncAddr[i] = remoteDecExeFuncAddr[i];
+				}
+				if (i >= 32) {
+					cmdbuf[1] = MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_INVALID_SIZE);
+					Reset_3gx_DecParams();
+					break;
+				}
+			}
+			memcpy(g_decExeArgs, (u32*)cmdbuf[3], 16 * sizeof(u32));
+
+			svcInvalidateEntireInstructionCache(); // Could use the range one
+
+			cmdbuf[1] = 0;
+			break;
+		}
+        
         default: // Unknown command
         {
             error(cmdbuf, 0xD900182F);
@@ -400,8 +484,10 @@ static void WaitForProcessTerminated(void *arg)
     PluginLoaderContext *ctx = &PluginLoaderCtx;
 
     // Unmap plugin's memory before closing the process
-    MemoryBlock__UnmountFromProcess();
-    MemoryBlock__Free();
+    if (!ctx->pluginIsSwapped) {
+		MemoryBlock__UnmountFromProcess();
+		MemoryBlock__Free();
+	}
     // Terminate process
     svcCloseHandle(ctx->target);
     // Reset plugin loader state
@@ -419,10 +505,13 @@ void    PluginLoader__HandleKernelEvent(u32 notifId)
 
     if (event == PLG_CFG_EXIT_EVENT)
     {
-        // Signal the plugin that the game is exiting
-        PLG__NotifyEvent(PLG_ABOUT_TO_EXIT, false);
-        // Wait for plugin reply
-        PLG__WaitForReply();
+        if (!ctx->pluginIsSwapped)
+		{
+            // Signal the plugin that the game is exiting
+			PLG__NotifyEvent(PLG_ABOUT_TO_EXIT, false);
+			// Wait for plugin reply
+			PLG__WaitForReply();
+		}
         // Start a task to wait for process to be terminated
         TaskRunner_RunTask(WaitForProcessTerminated, NULL, 0);
     }

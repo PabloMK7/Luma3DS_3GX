@@ -1,5 +1,18 @@
 #include <3ds.h>
-#include "3gx.h"
+#include <string.h>
+#include <stdio.h>
+#include "plugin.h"
+#include "ifile.h"
+#include "utils.h"
+
+u32         g_decExeArgs[0x10];
+void        decExeFunc(void* startAddr, void* endAddr, void* args);
+
+static inline u32 invertEndianness(u32 val)
+{
+    return ((val & 0xFF) << 24) | ((val & 0xFF00) << 8) | ((val & 0xFF0000) >> 8) | ((val & 0xFF000000) >> 24);
+}
+
 
 static inline u32 invertEndianness(u32 val)
 {
@@ -18,10 +31,10 @@ Result  Check_3gx_Magic(IFile *file)
         return res;
 
     if ((u32)magic != (u32)_3GX_MAGIC) //Invalid file type
-    	return MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, 1);
+        return MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, 1);
 
     else if ((verDif = invertEndianness((u32)(magic >> 32)) - invertEndianness((u32)(_3GX_MAGIC >> 32))) != 0) //Invalid plugin version (2 -> outdated plugin; 3 -> outdated loader)
-		return MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, (verDif < 0) ? 2 : 3);
+        return MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, (verDif < 0) ? 2 : 3);
 
     else return 0;
 }
@@ -87,5 +100,23 @@ Result  Read_3gx_LoadSegments(IFile *file, _3gx_Header *header, void *dst)
     size = exeHdr->codeSize + exeHdr->rodataSize + exeHdr->dataSize;
     res = IFile_Read(file, &total, dst, size);
 
+    decExeFunc(dst, dst + size, g_decExeArgs);
+    Reset_3gx_DecParams();
+
     return res;
+}
+
+void       Reset_3gx_DecParams(void)
+{
+	u32* decExeFuncAddr = PA_FROM_VA_PTR((u32)decExeFunc); //Bypass mem permissions
+
+	memset(g_decExeArgs, 0, sizeof(g_decExeArgs));
+
+	decExeFuncAddr[0] = 0xE12FFF1E; // BX LR
+
+	for (int i = 1; i < 32; i++) {
+		decExeFuncAddr[i] = 0xE320F000; // NOP
+	}
+
+	svcInvalidateEntireInstructionCache();
 }

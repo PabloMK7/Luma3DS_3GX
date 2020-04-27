@@ -58,6 +58,8 @@ Result  PLGLDR__SetPluginLoadParameters(PluginLoadParameters *parameters);
 Result  PLGLDR__DisplayMenu(PluginMenu *menu);
 Result  PLGLDR__DisplayMessage(const char *title, const char *body);
 Result  PLGLDR__DisplayErrMessage(const char *title, const char *body, u32 error);
+Result  PLGLDR__SetSwapSettings(char* swapPath, void* encFunc, void* decFunc, void* args);
+Result  PLGLDR__SetExeDecSettings(void* decFunc, void* args);
 Result  PLGLDR__GetVersion(u32 *version);
 void    PLGLDR__SetEventCallback(OnPlgLdrEventCb_t cb);
 void    PLGLDR__Status(void);
