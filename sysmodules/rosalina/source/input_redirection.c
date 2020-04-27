@@ -57,15 +57,36 @@ int inputRedirectionStartResult;
 void inputRedirectionThreadMain(void)
 {
     Result res = 0;
+    inputRedirectionStartResult = 0;
+
     res = miniSocInit();
     if(R_FAILED(res))
+    {
+        // Socket services broken
+        inputRedirectionStartResult = res;
+
+        miniSocExit();
+        // Still signal the event
+        svcSignalEvent(inputRedirectionThreadStartedEvent);
         return;
+    }
 
     int sock = socSocket(AF_INET, SOCK_DGRAM, 0);
-    while(sock == -1)
+    u32 tries = 15;
+    while(sock == -1 && --tries > 0)
     {
-        svcSleepThread(1000 * 0000 * 0000LL);
+        svcSleepThread(100 * 1000 * 1000LL);
         sock = socSocket(AF_INET, SOCK_DGRAM, 0);
+    }
+
+    if (sock < -10000 || tries == 0) {
+        // Socket services broken
+        inputRedirectionStartResult = -1;
+
+        miniSocExit();
+        // Still signal the event
+        svcSignalEvent(inputRedirectionThreadStartedEvent);
+        return;
     }
 
     struct sockaddr_in saddr;
@@ -78,6 +99,9 @@ void inputRedirectionThreadMain(void)
         socClose(sock);
         miniSocExit();
         inputRedirectionStartResult = res;
+
+        // Still signal the event
+        svcSignalEvent(inputRedirectionThreadStartedEvent);
         return;
     }
 
@@ -134,8 +158,11 @@ void inputRedirectionThreadMain(void)
                     srvPublishToSubscriber(0x203, 0);
             }
         }
+        else if(pollres < -10000)
+            break;
     }
 
+    inputRedirectionEnabled = false;
     struct linger linger;
     linger.l_onoff = 1;
     linger.l_linger = 0;
@@ -388,6 +415,8 @@ Result InputRedirection_DoOrUndoPatches(void)
     Handle processHandle;
 
     Result res = OpenProcessByName("hid", &processHandle);
+    static bool hidPatched = false;
+    static bool irPatched = false;
 
     if(R_SUCCEEDED(res))
     {
@@ -414,11 +443,12 @@ Result InputRedirection_DoOrUndoPatches(void)
             static u32 *hidRegPatchOffsets[2];
             static u32 *hidPatchJumpLoc;
 
-            if(inputRedirectionEnabled)
+            if(hidPatched)
             {
                 memcpy(hidRegPatchOffsets[0], &hidOrigRegisterAndValue, sizeof(hidOrigRegisterAndValue));
                 memcpy(hidRegPatchOffsets[1], &hidOrigRegisterAndValue, sizeof(hidOrigRegisterAndValue));
                 memcpy(hidPatchJumpLoc, &hidOrigCode, sizeof(hidOrigCode));
+                hidPatched = false;
             }
             else
             {
@@ -459,6 +489,7 @@ Result InputRedirection_DoOrUndoPatches(void)
 
                 *off = *off2 = hidDataPhys;
                 memcpy(off3, &hidHook, sizeof(hidHook));
+                hidPatched = true;
             }
         }
 
