@@ -3,7 +3,7 @@ stages:
     - release
 
 build-master:
-  image: nanquitas/luma3ds:latest
+  image: pablomk7/luma3dsplgldr:latest
   stage: build
   services:
   only:
