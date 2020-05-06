@@ -122,7 +122,8 @@ void     PluginLoader__HandleCommands(void *_ctx)
                     }
                     REG32(0x10202204) = 0;
                 }
-                IR__Patch();
+                if (!ctx->userLoadParameters.noIRPatch)
+                    IR__Patch();
                 SetConfigMemoryStatus(PLG_CFG_RUNNING);
             }
             else
@@ -294,93 +295,83 @@ void     PluginLoader__HandleCommands(void *_ctx)
             break;
         }
         
-		case 11: // Get menu opening block pys address
-		{
-			if (cmdbuf[0] != IPC_MakeHeader(11, 0, 0))
+        case 11: // Get menu opening block pys address
+        {
+            if (cmdbuf[0] != IPC_MakeHeader(11, 0, 0))
             {
                 error(cmdbuf, 0xD9001830);
                 break;
             }
-			cmdbuf[0] = IPC_MakeHeader(11, 2, 0);
-			cmdbuf[1] = 0;
+            cmdbuf[0] = IPC_MakeHeader(11, 2, 0);
+            cmdbuf[1] = 0;
             cmdbuf[2] = svcConvertVAToPA(&blockMenuOpen, false);
-			break;
-		}
+            break;
+        }
         
-		case 12: // Set swap settings
-		{
-			if (cmdbuf[0] != IPC_MakeHeader(12, 2, 4))
-			{
-				error(cmdbuf, 0xD9001830);
-				break;
-			}
-			cmdbuf[0] = IPC_MakeHeader(12, 1, 0);
-			MemoryBlock__ResetSwapSettings();
-			if (cmdbuf[1]) {
-				u32* encPhysAddr = PA_FROM_VA_PTR(encSwapFunc); //Bypass mem permissions
-				u32* remoteEncPhysAddr = (u32*)(cmdbuf[1] | (1 << 31));
-				int i = 0;
-				for (; i < 32 && remoteEncPhysAddr[i] != 0xE320F000; i++) {
-					encPhysAddr[i] = remoteEncPhysAddr[i];
-				}
-				if (i >= 32) {
-					cmdbuf[1] = MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_INVALID_SIZE);
-					MemoryBlock__ResetSwapSettings();
-					break;
-				}
-			}
-			if (cmdbuf[2]) {
-				u32* decPhysAddr = PA_FROM_VA_PTR(decSwapFunc); //Bypass mem permissions
-				u32* remoteDecPhysAddr = (u32*)(cmdbuf[2] | (1 << 31));
-				int j = 0;
-				for (; j < 32 && remoteDecPhysAddr[j] != 0xE320F000; j++) {
-					decPhysAddr[j] = remoteDecPhysAddr[j];
-				}
-				if (j >= 32) {
-					cmdbuf[1] = MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_INVALID_SIZE);
-					MemoryBlock__ResetSwapSettings();
-					break;
-				}
-			}
-			
-			memcpy(g_encDecSwapArgs, (u32*)cmdbuf[4], 16 * sizeof(u32));
-			if (((char*)cmdbuf[6])[0] != '\0') strncpy(g_swapFileName, (char*)cmdbuf[6], 255);
-			
-			svcInvalidateEntireInstructionCache(); // Could use the range one
+        case 12: // Set swap settings
+        {
+            if (cmdbuf[0] != IPC_MakeHeader(12, 2, 4))
+            {
+                error(cmdbuf, 0xD9001830);
+                break;
+            }
+            cmdbuf[0] = IPC_MakeHeader(12, 1, 0);
+            MemoryBlock__ResetSwapSettings();
+            if (!cmdbuf[1] || !cmdbuf[2]) {
+                cmdbuf[1] = MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_INVALID_ADDRESS);
+                break;
+            }              
+            
+            u32* remoteEncPhysAddr = (u32*)(cmdbuf[1] | (1 << 31));
+            u32* remoteDecPhysAddr = (u32*)(cmdbuf[2] | (1 << 31));
+            
+            Result ret = MemoryBlock__SetSwapSettings(remoteEncPhysAddr, false, (u32*)cmdbuf[4]);
+            if (!ret) ret = MemoryBlock__SetSwapSettings(remoteDecPhysAddr, true, (u32*)cmdbuf[4]);
+            
+            if (ret) {
+                cmdbuf[1] = MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_TOO_LARGE);
+                MemoryBlock__ResetSwapSettings();
+                break;
+            }
+            
+            ctx->isSwapFunctionset = true;
+            
+            if (((char*)cmdbuf[6])[0] != '\0') strncpy(g_swapFileName, (char*)cmdbuf[6], 255);
+            
+            svcInvalidateEntireInstructionCache(); // Could use the range one
 
-			cmdbuf[1] = 0;
-			break;
-		}
+            cmdbuf[1] = 0;
+            break;
+        }
         
-		case 13: // Set plugin exe dec 
-		{
-			if (cmdbuf[0] != IPC_MakeHeader(13, 1, 2))
-			{
-				error(cmdbuf, 0xD9001830);
-				break;
-			}
-			cmdbuf[0] = IPC_MakeHeader(13, 1, 0);
-			Reset_3gx_DecParams();
-			if (cmdbuf[1]) {
-				u32* decExeFuncAddr = PA_FROM_VA_PTR(decExeFunc); //Bypass mem permissions
-				u32* remoteDecExeFuncAddr = (u32*)(cmdbuf[1] | (1 << 31));
-				int i = 0;
-				for (; i < 32 && remoteDecExeFuncAddr[i] != 0xE320F000; i++) {
-					decExeFuncAddr[i] = remoteDecExeFuncAddr[i];
-				}
-				if (i >= 32) {
-					cmdbuf[1] = MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_INVALID_SIZE);
-					Reset_3gx_DecParams();
-					break;
-				}
-			}
-			memcpy(g_decExeArgs, (u32*)cmdbuf[3], 16 * sizeof(u32));
+        case 13: // Set plugin exe dec 
+        {
+            if (cmdbuf[0] != IPC_MakeHeader(13, 1, 2))
+            {
+                error(cmdbuf, 0xD9001830);
+                break;
+            }
+            cmdbuf[0] = IPC_MakeHeader(13, 1, 0);
+            Reset_3gx_DecParams();
+            if (!cmdbuf[1]) { 
+                cmdbuf[1] = MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_INVALID_ADDRESS);
+                break;
+            }
+            
+            u32* remoteDecExeFuncAddr = (u32*)(cmdbuf[1] | (1 << 31));
+            Result ret = Set_3gx_DecParams(remoteDecExeFuncAddr, (u32*)cmdbuf[3]);
+            if (ret) 
+            {
+                cmdbuf[1] = MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_TOO_LARGE);
+                Reset_3gx_DecParams();
+                break;
+            }
 
-			svcInvalidateEntireInstructionCache(); // Could use the range one
+            svcInvalidateEntireInstructionCache(); // Could use the range one
 
-			cmdbuf[1] = 0;
-			break;
-		}
+            cmdbuf[1] = 0;
+            break;
+        }
         
         default: // Unknown command
         {
@@ -397,7 +388,7 @@ void     PluginLoader__HandleCommands(void *_ctx)
     }
 }
 
-static void     EnableNotificationLED(void)
+void     PluginLoader__EnableNotificationLED(void)
 {
     struct
     {
@@ -426,7 +417,7 @@ static void     EnableNotificationLED(void)
     svcCloseHandle(ptmsysmHandle);
 }
 
-static void     DisableNotificationLED(void)
+void     PluginLoader__DisableNotificationLED(void)
 {
     struct
     {
@@ -485,16 +476,19 @@ static void WaitForProcessTerminated(void *arg)
 
     // Unmap plugin's memory before closing the process
     if (!ctx->pluginIsSwapped) {
-		MemoryBlock__UnmountFromProcess();
-		MemoryBlock__Free();
-	}
+        MemoryBlock__UnmountFromProcess();
+        MemoryBlock__Free();
+    }
     // Terminate process
     svcCloseHandle(ctx->target);
     // Reset plugin loader state
     SetConfigMemoryStatus(PLG_CFG_NONE);
     ctx->pluginIsSwapped = false;
     ctx->target = 0;
-    IR__Unpatch();
+    ctx->isExeDecFunctionset = false;
+    ctx->isSwapFunctionset = false;
+    if (!ctx->userLoadParameters.noIRPatch)
+        IR__Unpatch();
 }
 
 void    PluginLoader__HandleKernelEvent(u32 notifId)
@@ -506,18 +500,18 @@ void    PluginLoader__HandleKernelEvent(u32 notifId)
     if (event == PLG_CFG_EXIT_EVENT)
     {
         if (!ctx->pluginIsSwapped)
-		{
+        {
             // Signal the plugin that the game is exiting
-			PLG__NotifyEvent(PLG_ABOUT_TO_EXIT, false);
-			// Wait for plugin reply
-			PLG__WaitForReply();
-		}
+            PLG__NotifyEvent(PLG_ABOUT_TO_EXIT, false);
+            // Wait for plugin reply
+            PLG__WaitForReply();
+        }
         // Start a task to wait for process to be terminated
         TaskRunner_RunTask(WaitForProcessTerminated, NULL, 0);
     }
     else if (event == PLG_CFG_SWAP_EVENT)
     {
-        EnableNotificationLED();
+        PluginLoader__EnableNotificationLED();
         if (ctx->pluginIsSwapped)
         {
             // Reload data from swap file
@@ -545,7 +539,7 @@ void    PluginLoader__HandleKernelEvent(u32 notifId)
             SetConfigMemoryStatus(PLG_CFG_SWAPPED);
         }
         ctx->pluginIsSwapped = !ctx->pluginIsSwapped;
-        DisableNotificationLED();
+        PluginLoader__DisableNotificationLED();
     }
     srvPublishToSubscriber(0x1002, 0);
 }

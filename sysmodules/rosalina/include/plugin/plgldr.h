@@ -10,6 +10,7 @@
 typedef struct
 {
     bool    noFlash;
+    bool    noIRPatch;
     u32     lowTitleId;
     char    path[256];
     u32     config[32];

@@ -208,13 +208,24 @@ bool     TryToLoadPlugin(Handle process)
     // Read header
     if (!res && R_FAILED((res = Read_3gx_Header(&plugin, header))))
         ctx->error.message = "Couldn't read file";
-
+    
+    // Read embedded enc/dec functions
+    if (!res && R_FAILED((res = Read_3gx_EmbeddedPayloads(&plugin, header))))
+        ctx->error.message = "Invalid encryption payloads.";
+    
+    // Save exe checksum
+    if (!res)
+        ctx->exeDecChecksum = header->infos.exeDecChecksum;
+    
     // Check titles compatibility
     if (!res) res = CheckPluginCompatibility(header, (u32)tid);
 
     // Read code
-    if (!res && R_FAILED(res = Read_3gx_LoadSegments(&plugin, header, ctx->memblock.memblock + sizeof(PluginHeader))))
-        ctx->error.message = "Couldn't read plugin's code";
+    if (!res && R_FAILED(res = Read_3gx_LoadSegments(&plugin, header, ctx->memblock.memblock + sizeof(PluginHeader)))) {
+        if (res == MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_NO_DATA)) ctx->error.message = "This plugin requires a decryption function.";
+        else if (res == MAKERESULT(RL_PERMANENT, RS_INVALIDARG, RM_LDR, RD_INVALID_ADDRESS)) ctx->error.message = "This plugin file is corrupted.";
+        else ctx->error.message = "Couldn't read plugin's code";
+    }
 
     if (R_FAILED(res))
     {

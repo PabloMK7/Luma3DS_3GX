@@ -7,7 +7,7 @@
 
 #define MEMPERM_RW (MEMPERM_READ | MEMPERM_WRITE)
 
-u32  g_encDecSwapArgs[0x10];
+u32  g_encDecSwapArgs[4];
 char g_swapFileName[256];
 
 Result      MemoryBlock__IsReady(void)
@@ -60,8 +60,14 @@ Result      MemoryBlock__IsReady(void)
                                     MemBlockSize, MEMOP_REGION_SYSTEM | MEMOP_ALLOC | MEMOP_LINEAR_FLAG, MEMPERM_RW);
     }
 
-    if (R_FAILED(res))
-        PluginLoader__Error("Couldn't allocate memblock", res);
+    if (R_FAILED(res)) {
+        PluginLoader__DisableNotificationLED();
+        if (isN3DS)
+            PluginLoader__Error("Cannot map plugin memory.", res);
+        else
+            PluginLoader__Error("A console reboot is needed to\nclose extended memory games.\n\nPress [B] to reboot.", res);
+        svcKernelSetState(7);
+    }
     else
     {
         // Clear the memblock
@@ -108,6 +114,7 @@ Result      MemoryBlock__Free(void)
 Result      MemoryBlock__ToSwapFile(void)
 {
     MemoryBlock *memblock = &PluginLoaderCtx.memblock;
+    PluginLoaderContext *ctx = &PluginLoaderCtx;
 
     u64     written = 0;
     u64     toWrite = MemBlockSize;
@@ -118,14 +125,26 @@ Result      MemoryBlock__ToSwapFile(void)
     res = IFile_Open(&file, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""),
                     fsMakePath(PATH_ASCII, g_swapFileName), FS_OPEN_RWC);
 
-    if (R_FAILED(res)) return res;
+    if (R_FAILED(res)) {
+        PluginLoader__DisableNotificationLED();
+        PluginLoader__Error("CRITICAL: Failed to open swap file.\n\nConsole will now reboot.", res);
+        svcKernelSetState(7);
+    }
     
-    encSwapFunc(memblock->memblock, memblock->memblock + MemBlockSize, g_encDecSwapArgs);
+    if (!ctx->isSwapFunctionset) {
+        PluginLoader__DisableNotificationLED();
+        PluginLoader__Error("CRITICAL: Swap encrypt function\nis not set.\n\nConsole will now reboot.", res);
+        svcKernelSetState(7);
+    }
+    ctx->swapDecChecksum = encSwapFunc(memblock->memblock, memblock->memblock + MemBlockSize, g_encDecSwapArgs);
     
     res = IFile_Write(&file, &written, memblock->memblock, toWrite, FS_WRITE_FLUSH);
 
-    if (R_FAILED(res) || written != toWrite)
-        svcBreak(USERBREAK_ASSERT); ///< TODO: Better error handling
+    if (R_FAILED(res) || written != toWrite) {
+        PluginLoader__DisableNotificationLED();
+        PluginLoader__Error("CRITICAL: Couldn't write swap to SD.\n\nConsole will now reboot.", res);
+        svcKernelSetState(7);
+    }
 
     IFile_Close(&file);
     return res;
@@ -143,16 +162,30 @@ Result      MemoryBlock__FromSwapFile(void)
     res = IFile_Open(&file, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""),
                     fsMakePath(PATH_ASCII, g_swapFileName), FS_OPEN_READ);
 
-    if (R_FAILED(res))
-        svcBreak(USERBREAK_ASSERT); ///< TODO: Better error handling
+    if (R_FAILED(res)) {
+        PluginLoader__DisableNotificationLED();
+        PluginLoader__Error("CRITICAL: Failed to open swap file.\n\nConsole will now reboot.", res);
+        svcKernelSetState(7);
+    }
 
     res = IFile_Read(&file, &read, memblock->memblock, toRead);
 
-    if (R_FAILED(res) || read != toRead)
-        svcBreak(USERBREAK_ASSERT); ///< TODO: Better error handling
+    if (R_FAILED(res) || read != toRead) {
+        PluginLoader__DisableNotificationLED();
+        PluginLoader__Error("CRITICAL: Couldn't read swap from SD.\n\nConsole will now reboot.", res);
+        svcKernelSetState(7);
+    }
     
-    decSwapFunc(memblock->memblock, memblock->memblock + MemBlockSize, g_encDecSwapArgs);
-
+    u32 checksum = decSwapFunc(memblock->memblock, memblock->memblock + MemBlockSize, g_encDecSwapArgs);
+    
+    PluginLoaderContext *ctx = &PluginLoaderCtx;
+    if (checksum != ctx->swapDecChecksum) {
+        res = -1;
+        PluginLoader__DisableNotificationLED();
+        PluginLoader__Error("CRITICAL: Swap file is corrupted.\n\nConsole will now reboot.", res);
+        svcKernelSetState(7); 
+    }
+    
     svcFlushDataCacheRange(memblock->memblock, MemBlockSize);
     IFile_Close(&file);
     return res;
@@ -198,10 +231,27 @@ Result     MemoryBlock__UnmountFromProcess(void)
     return res;
 }
 
+Result    MemoryBlock__SetSwapSettings(u32* func, bool isDec, u32* params)
+{
+    u32* physAddr = PA_FROM_VA_PTR(isDec ? (u32)decSwapFunc : (u32)encSwapFunc); //Bypass mem permissions
+
+	memcpy(g_encDecSwapArgs, params, sizeof(g_encDecSwapArgs));
+    
+    int i = 0;
+    for (; i < 32 && func[i] != 0xE320F000; i++)
+        physAddr[i] = func[i];
+
+    if (i >= 32) {
+        return -1;
+    }
+    return 0;
+}
+
 void       MemoryBlock__ResetSwapSettings(void)
 {
 	u32* encPhysAddr = PA_FROM_VA_PTR((u32)encSwapFunc); //Bypass mem permissions
 	u32* decPhysAddr = PA_FROM_VA_PTR((u32)decSwapFunc);
+    PluginLoaderContext *ctx = &PluginLoaderCtx;
 
 	memset(g_encDecSwapArgs, 0, sizeof(g_encDecSwapArgs));
 
@@ -212,6 +262,7 @@ void       MemoryBlock__ResetSwapSettings(void)
 	}
 
 	strcpy(g_swapFileName, "/luma/plugins/.swap");
+    ctx->isSwapFunctionset = false;
 
 	svcInvalidateEntireInstructionCache();
 }
